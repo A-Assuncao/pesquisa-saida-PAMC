@@ -2,6 +2,17 @@
 
 Este projeto tem como objetivo extrair, processar e armazenar dados de presos cadastrados em um determinado sistema (Canaime). A partir de uma página de pesquisa online, são obtidos os IDs e nomes dos reeducandos, filtrados conforme critérios específicos, e finalmente, os resultados são salvos em um arquivo Excel.
 
+## Sumário
+
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação](#instalação)
+- [Como Executar](#como-executar)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Funcionamento](#funcionamento)
+- [Tratamento de Erros](#tratamento-de-erros)
+- [Contribuindo](#contribuindo)
+- [Licença](#licença)
+
 ## Pré-requisitos
 
 - Python 3.7 ou superior  
