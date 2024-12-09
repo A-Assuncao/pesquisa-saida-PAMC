@@ -119,4 +119,4 @@ pesquisa-saida-PAMC/
 
 ## Licença
 
-Este projeto está sob a licença MIT. Consulte o arquivo [LICENSE](#licença) (caso exista) para mais detalhes.
+Este projeto está sob a licença MIT. Consulte o arquivo [LICENSE](#LICENSE) (caso exista) para mais detalhes.
