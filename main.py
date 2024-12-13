@@ -171,7 +171,7 @@ def busca_datas(lista: list) -> list:
                     ultima_data = lista_datas[index_unit].strip()
                     # Verifica se atende aos critérios
                     data_convertida = datetime.strptime(ultima_data, "%d/%m/%Y")
-                    if ultima_unit == 'PAMC' and data_convertida.year == 2024:
+                    if data_convertida.year == 2024:
                         lista_presos_saida.append({
                             'Código': item['id'],
                             'Preso': item['nome'],
