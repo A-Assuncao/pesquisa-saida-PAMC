@@ -1,33 +1,22 @@
 import json
-import math
 import os
-import time
-from datetime import datetime, timedelta
-
+from login_canaime import Login
 import openpyxl
 from openpyxl.utils import get_column_letter
+from datetime import datetime, timedelta
+import math
+import time
 
-from login_canaime import Login
+mostrar_navegador = False
 
 url_pesquisa = (
     'https://canaime.com.br/sgp2rr/areas/unidades/pesquisa_resultadoVULGO.php?'
     'busca1=nome&busca2=&busca3=SAIDA&Submit2=Pesquisar'
 )
-url_certidao = 'https://canaime.com.br/sgp2rr/areas/impressoes/UND_CertidaoCarceraria.php?id_cad_preso='
-
 
 def lista_ids_saida(nome_arquivo: str = "lista_ids_saida.json") -> list:
-    """
-    Gera uma lista de IDs de presos a partir da página de pesquisa.
-
-    Args:
-        nome_arquivo (str): Nome do arquivo JSON para salvar os resultados.
-
-    Returns:
-        list: Lista contendo o objeto 'page' e a lista de presos com seus IDs e nomes.
-    """
     try:
-        page = Login(test=False)
+        page = Login(test=mostrar_navegador)
         page.goto(url_pesquisa)
     except Exception as e:
         print("Erro ao acessar a página de pesquisa:", e)
@@ -45,16 +34,16 @@ def lista_ids_saida(nome_arquivo: str = "lista_ids_saida.json") -> list:
     resultados = []
 
     pagina = 0
-    tempos = []  # Lista para armazenar o tempo de cada iteração
+    tempos = []
 
     while pagina < total_paginas:
-        inicio = time.time()  # Marca o início da iteração
+        inicio = time.time()
         paginas_restantes = total_paginas - (pagina + 1)
-        print(f"Acessando página {pagina + 1} de {total_paginas} páginas, faltam {paginas_restantes} páginas...")
+        print(f"Acessando página {pagina + 1} de {total_paginas}, faltam {paginas_restantes} páginas...")
 
         url_inicial = (
-            f'https://canaime.com.br/sgp2rr/areas/unidades/pesquisa_resultadoVULGO.php?pageNum_rsPreso={str(pagina)}'
-            f'&totalRows_rsPreso={str(qtd_presos)}&busca1=nome&busca2=&busca3=SAIDA&Submit2=Pesquisar'
+            f'https://canaime.com.br/sgp2rr/areas/unidades/pesquisa_resultadoVULGO.php?pageNum_rsPreso={pagina}'
+            f'&totalRows_rsPreso={qtd_presos}&busca1=nome&busca2=&busca3=SAIDA&Submit2=Pesquisar'
         )
 
         try:
@@ -70,10 +59,9 @@ def lista_ids_saida(nome_arquivo: str = "lista_ids_saida.json") -> list:
                 elemento = elementos.nth(i)
                 href = elemento.get_attribute('href')
                 if href and "id_cad_preso=" in href:
-                    id_cad_preso = href.split('=')[-1]  # Pega os números após "="
+                    id_cad_preso = href.split('=')[-1]
                 else:
                     id_cad_preso = None
-
                 nome = elemento.text_content().strip()
                 resultados.append({'id': id_cad_preso, 'nome': nome})
             except Exception as e:
@@ -81,16 +69,13 @@ def lista_ids_saida(nome_arquivo: str = "lista_ids_saida.json") -> list:
 
         pagina += 1
         fim = time.time()
-        tempos.append(fim - inicio)  # Adiciona o tempo gasto para a iteração à lista
-        if len(tempos) > 0:
+        tempos.append(fim - inicio)
+        if len(tempos) > 0 and paginas_restantes > 0:
             tempo_medio = sum(tempos) / len(tempos)
             tempo_estimado = tempo_medio * paginas_restantes
-
-            # Converte o tempo restante para horas, minutos e segundos
             estimativa_timedelta = timedelta(seconds=tempo_estimado)
             horas, resto = divmod(estimativa_timedelta.seconds, 3600)
             minutos, segundos = divmod(resto, 60)
-
             print(f"Tempo estimado restante: {horas} horas, {minutos} minutos e {segundos} segundos.")
             print()
 
@@ -105,145 +90,180 @@ def lista_ids_saida(nome_arquivo: str = "lista_ids_saida.json") -> list:
 
 
 def busca_dados(lista_arquivo: str = "lista_ids_saida.json") -> list:
-    """
-    Verifica se a lista de IDs existe. Caso contrário, gera a lista com lista_ids_saida.
-
-    Args:
-        lista_arquivo (str): Nome do arquivo JSON contendo a lista de IDs.
-
-    Returns:
-        list: Lista contendo o objeto 'page' e a lista de presos.
-    """
-    if not os.path.exists(lista_arquivo):
-        print(f"Arquivo {lista_arquivo} não encontrado. Gerando lista de IDs...")
-        lista_de_ids = lista_ids_saida(lista_arquivo)
-        return lista_de_ids
+    if not os.path.exists(lista_arquivo) or os.path.getsize(lista_arquivo) == 0:
+        print(f"Arquivo {lista_arquivo} não encontrado ou vazio.")
+        return []
     else:
         print(f"Arquivo {lista_arquivo} encontrado. Carregando lista de IDs...")
         try:
             with open(lista_arquivo, 'r', encoding='utf-8') as f:
                 lista_de_ids = json.load(f)
-            page = Login(test=False)
+            page = Login(test=mostrar_navegador)
             return [page, lista_de_ids]
         except Exception as e:
             print("Erro ao carregar o arquivo JSON:", e)
-            # Em caso de erro, tenta gerar a lista novamente
-            return lista_ids_saida(lista_arquivo)
+            return []
 
 
 def busca_datas(lista: list) -> list:
-    """
-    Acessa as páginas de certidão para cada preso da lista, busca a última data e unidade,
-    e verifica se a unidade é 'PAMC' no ano de 2024.
-
-    Args:
-        lista (list): Lista contendo o objeto 'page' e a lista de presos.
-
-    Returns:
-        list: Lista de dicionários com informações dos presos filtrados.
-    """
     try:
         page, lista = lista
     except ValueError:
-        print("Lista de IDs inválida. Certifique-se de que a função busca_dados retornou a lista corretamente.")
+        print("Lista de IDs inválida.")
         return []
 
     lista_presos_saida = []
-    tempos = []  # Lista para armazenar o tempo de cada iteração
+    tempos = []
+    url_certidao = "https://canaime.com.br/sgp2rr/areas/impressoes/UND_CertidaoCarceraria.php?id_cad_preso="
 
     for index, item in enumerate(lista):
-        inicio = time.time()  # Marca o início da iteração
+        inicio = time.time()
         total_items = len(lista)
         items_restantes = total_items - (index + 1)
         print(f"Acessando preso {index + 1} de {total_items}, faltam {items_restantes} presos...")
 
-        try:
-            # Acessa a URL específica do preso
-            page.goto(url_certidao + item['id'])
+        # Tentativa repetitiva em caso de timeout
+        while True:
+            try:
+                page.goto(url_certidao + item['id'])
+                lista_unit = page.locator('table+ table td.titulobk:nth-child(1)').all_text_contents()
+                lista_datas = page.locator('table+ table .titulobk+ .titulobk:nth-child(2)').all_text_contents()
 
-            lista_unit = page.locator('table+ table td.titulobk:nth-child(1)').all_text_contents()
-            lista_datas = page.locator('table+ table .titulobk+ .titulobk:nth-child(2)').all_text_contents()
+                for index_unit in reversed(range(len(lista_unit))):
+                    if lista_unit[index_unit] not in ("SAIDA", "SAÍDA", "SA�DA"):
+                        ultima_unit = lista_unit[index_unit].strip()
+                        ultima_data = lista_datas[index_unit].strip()
+                        print(item['id'], item['nome'], ultima_unit, ultima_data)
+                        try:
+                            data_convertida = datetime.strptime(ultima_data, "%d/%m/%Y")
+                            if data_convertida.year == 2024:
+                                lista_presos_saida.append({
+                                    'Código': item['id'],
+                                    'Preso': item['nome'],
+                                    'Unidade': ultima_unit,
+                                    'Data': ultima_data
+                                })
+                        except ValueError:
+                            lista_presos_saida.append({
+                                'Código': item['id'],
+                                'Preso': item['nome'],
+                                'Unidade': ultima_unit,
+                                'Data': ultima_data
+                            })
+                        break
+                # Se chegou até aqui, foi bem sucedido, então saia do loop infinito
+                break
 
-            # Itera sobre as unidades e datas
-            for index_unit in reversed(range(len(lista_unit))):
-                if lista_unit[index_unit] != "SAIDA":
-                    ultima_unit = lista_unit[index_unit].strip()
-                    ultima_data = lista_datas[index_unit].strip()
-                    # Verifica se atende aos critérios
-                    data_convertida = datetime.strptime(ultima_data, "%d/%m/%Y")
-                    if data_convertida.year == 2024:
-                        lista_presos_saida.append({
-                            'Código': item['id'],
-                            'Preso': item['nome'],
-                            'Unidade': ultima_unit,
-                            'Data': ultima_data
-                        })
-                    break
-        except Exception as e:
-            print(f"Erro ao processar dados do preso {item.get('nome', '')} (ID: {item.get('id', '')}):", e)
+            except TimeoutError as te:
+                print(f"Timeout ao acessar o preso {item.get('nome', '')} (ID: {item.get('id', '')}). Tentando novamente...")
+                # Continua no loop, tentando novamente
+            except Exception as e:
+                # Outros erros não relacionados a timeout também podem ser tratados.
+                # Se quiser tentar infinitamente só para TimeoutError, pode diferenciar aqui.
+                print(f"Erro ao processar dados do preso {item.get('nome', '')} (ID: {item.get('id', '')}): {e}")
+                # Dependendo do caso, se quiser tentar novamente apenas em caso de TimeoutError, pode colocar um break aqui para não loopar eternamente outros erros.
+                # break
 
-        fim = time.time()  # Marca o fim da iteração
-        tempos.append(fim - inicio)  # Adiciona o tempo da iteração
+        fim = time.time()
+        tempos.append(fim - inicio)
 
-        if len(tempos) > 0:
+        if len(tempos) > 0 and items_restantes > 0:
             tempo_medio = sum(tempos) / len(tempos)
             tempo_estimado = tempo_medio * items_restantes
-
-            # Converte o tempo restante para horas, minutos e segundos
             estimativa_timedelta = timedelta(seconds=tempo_estimado)
             horas, resto = divmod(estimativa_timedelta.seconds, 3600)
             minutos, segundos = divmod(resto, 60)
-
             print(f"Tempo estimado restante: {horas} horas, {minutos} minutos e {segundos} segundos.")
             print()
+
+    nome_arquivo_json = "resultado.json"
+    try:
+        with open(nome_arquivo_json, 'w', encoding='utf-8') as f:
+            json.dump(lista_presos_saida, f, ensure_ascii=False, indent=4)
+        print(f"Dados salvos em {nome_arquivo_json}")
+    except Exception as e:
+        print("Erro ao salvar o arquivo JSON:", e)
 
     return lista_presos_saida
 
 
-def salvar_excel(lista_presos_saida: list, nome_arquivo: str) -> None:
-    """
-    Salva a lista de presos com suas informações em um arquivo Excel.
+def salvar_excel(lista_presos_saida: list, nome_arquivo: str = "presos_saida.xlsx") -> None:
+    if not lista_presos_saida:
+        print("A lista de presos está vazia, nada a salvar.")
+        return
 
-    Args:
-        lista_presos_saida (list): Lista de dicionários contendo as informações dos presos.
-        nome_arquivo (str): Nome do arquivo Excel a ser salvo.
-    """
     try:
-        # Cria um novo workbook e adiciona uma planilha
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Presos Saída"
 
-        # Define os cabeçalhos
         cabecalhos = ["Código", "Preso", "Unidade", "Data"]
         ws.append(cabecalhos)
 
-        # Adiciona os dados
-        for preso in lista_presos_saida:
-            ws.append([
-                preso.get("Código", ""),
-                preso.get("Preso", ""),
-                preso.get("Unidade", ""),
-                preso.get("Data", "")
-            ])
+        base_url = "https://canaime.com.br/sgp2rr/areas/unidades/Ficha_Menu.php?id_cad_preso="
 
-        # Ajusta a largura das colunas
+        for preso in lista_presos_saida:
+            codigo = preso.get("Código", "")
+            preso_nome = preso.get("Preso", "")
+            unidade = preso.get("Unidade", "")
+            data = preso.get("Data", "")
+
+            nova_linha = ws.max_row + 1
+            ws.cell(row=nova_linha, column=2, value=preso_nome)
+            ws.cell(row=nova_linha, column=3, value=unidade)
+            ws.cell(row=nova_linha, column=4, value=data)
+
+            cell_codigo = ws.cell(row=nova_linha, column=1, value=codigo)
+            if codigo:
+                cell_codigo.hyperlink = base_url + str(codigo)
+                cell_codigo.style = "Hyperlink"
+
         for col_num, col_title in enumerate(cabecalhos, 1):
             col_letter = get_column_letter(col_num)
             ws.column_dimensions[col_letter].width = max(len(col_title), 20)
 
-        # Salva o arquivo
         wb.save(nome_arquivo)
         print(f"Arquivo Excel salvo como {nome_arquivo}")
     except Exception as e:
         print("Erro ao salvar o arquivo Excel:", e)
 
 
-if __name__ == '__main__':
-    dados_ids = busca_dados()
-    if dados_ids and len(dados_ids) == 2:
-        dados_presos = busca_datas(dados_ids)
-        if dados_presos:
-            salvar_excel(dados_presos, "presos_saida.xlsx")
+def main():
+    # Caminho 1: Se existir resultado.json, então salvar excel.
+    if os.path.isfile("resultado.json") and os.path.getsize("resultado.json") > 0:
+        with open("resultado.json", "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        if dados:
+            salvar_excel(dados, "presos_saida.xlsx")
+            return
+        else:
+            print("resultado.json está vazio.")
+
+    # Caminho 2: Se não existir resultado.json, verifica se existe lista_ids_saida.json
+    if os.path.isfile("lista_ids_saida.json") and os.path.getsize("lista_ids_saida.json") > 0:
+        dados_ids = busca_dados("lista_ids_saida.json")  # Carrega a lista de ids
+        if dados_ids and len(dados_ids) == 2:
+            # Agora gera o resultado.json
+            dados_presos = busca_datas(dados_ids)
+            if dados_presos:
+                salvar_excel(dados_presos, "presos_saida.xlsx")
+                return
+            else:
+                print("Não foi possível obter dados detalhados a partir de lista_ids_saida.json.")
+        else:
+            print("Não foi possível carregar a lista de IDs a partir de lista_ids_saida.json.")
     else:
-        print("Não foi possível obter a lista de IDs para prosseguir.")
+        # Caminho 3: Se não existir lista_ids_saida.json, então gera
+        dados_ids = lista_ids_saida("lista_ids_saida.json")
+        if dados_ids and len(dados_ids) == 2:
+            dados_presos = busca_datas(dados_ids)
+            if dados_presos:
+                salvar_excel(dados_presos, "presos_saida.xlsx")
+                return
+            else:
+                print("Não foi possível obter dados detalhados a partir da lista recém-criada.")
+        else:
+            print("Não foi possível obter a lista de IDs.")
+
+if __name__ == "__main__":
+    main()
